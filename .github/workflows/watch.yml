@@ -1,0 +1,43 @@
+name: Watch MH Wilds updates
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 10분마다(UTC)
+  workflow_dispatch:          # 수동 실행 버튼
+
+concurrency:
+  group: mhwilds-watcher
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # last_seen.json 커밋
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore & Build
+        run: |
+          dotnet restore MHWsUpdateWatcher/MHWsUpdateWatcher.csproj
+          dotnet build --configuration Release MHWsUpdateWatcher/MHWsUpdateWatcher.csproj
+
+      - name: Run watcher
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: dotnet run --project MHWsUpdateWatcher/MHWsUpdateWatcher.csproj --configuration Release
+
+      - name: Commit last_seen if changed
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add MHWsUpdateWatcher/last_seen.json
+            git commit -m "chore: update last_seen [skip ci]"
+            git push
+          fi
